@@ -1,0 +1,132 @@
+docker pull datastax/dse-server
+docker pull datastax/dse-opscenter
+docker pull datastax/dse-studio
+
+docker run -e DS_LICENSE=accept -p 8888:8888 --name my-opscenter -d datastax/dse-opscenter
+docker run -e DS_LICENSE=accept --link my-opscenter --name my-dse -d datastax/dse-server
+docker run -e DS_LICENSE=accept -p 9091:9091 --link my-dse  --name my-studio -d datastax/dse-studio
+
+0(root@ipsawdvopskbg03 ~)$ hostname -I
+10.48.6.58 172.17.0.1 10.38.0.0
+127(root@ipsawdvopskbg03 ~)$ docker ps
+CONTAINER ID        IMAGE                                                              COMMAND                  CREATED             STATUS              PORTS                                                                                                                                                             NAMES
+6a4682266f96        datastax/dse-studio                                                "/entrypoint.sh"         25 seconds ago      Up 24 seconds       0.0.0.0:9091->9091/tcp                                                                                                                                            my-studio
+4391583b0c29        datastax/dse-server                                                "/entrypoint.sh dse …"   2 minutes ago       Up 2 minutes        4040/tcp, 5598-5599/tcp, 7000-7001/tcp, 7077/tcp, 7080-7081/tcp, 7199/tcp, 8090/tcp, 8182/tcp, 8609/tcp, 8983-8984/tcp, 9042/tcp, 9160/tcp, 9999/tcp, 18080/tcp   my-dse
+64cfd130d392        datastax/dse-opscenter                                             "/entrypoint.sh -f"      4 minutes ago       Up 4 minutes        50031/tcp, 0.0.0.0:8888->8888/tcp, 61620/tcp                                                                                                                      my-opscenter
+
+docker exec -e COLUMNS="`tput cols`" -e LINES="`tput lines`" -ti my-dse bash
+
+dse@4391583b0c29:~$ hostname -I
+172.17.0.4
+dse@4391583b0c29:~$ cqlsh 172.17.0.4
+Connected to Test Cluster at 172.17.0.4:9042.
+[cqlsh 5.0.1 | DSE 6.0.1 | CQL spec 3.4.5 | DSE protocol v2]
+Use HELP for help.
+cqlsh> CREATE KEYSPACE testks WITH replication={'class':'SimpleStrategy', 'replication_factor' : '1' };
+cqlsh> CREATE TABLE IF NOT EXISTS testks.iris ( id int primary key, sepal_l double, sepal_w double, petal_l double, petal_w double, species text) WITH nodesync={'enabled':'true'};
+cqlsh> desc table testks.iris
+
+CREATE TABLE testks.iris (
+    id int PRIMARY KEY,
+    petal_l double,
+    petal_w double,
+    sepal_l double,
+    sepal_w double,
+    species text
+) WITH bloom_filter_fp_chance = 0.01
+    AND caching = {'keys': 'ALL', 'rows_per_partition': 'NONE'}
+    AND comment = ''
+    AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy', 'max_threshold': '32', 'min_threshold': '4'}
+    AND compression = {'chunk_length_in_kb': '64', 'class': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+    AND crc_check_chance = 1.0
+    AND dclocal_read_repair_chance = 0.1
+    AND default_time_to_live = 0
+    AND gc_grace_seconds = 864000
+    AND max_index_interval = 2048
+    AND memtable_flush_period_in_ms = 0
+    AND min_index_interval = 128
+    AND nodesync = {'enabled': 'true'}
+    AND read_repair_chance = 0.0
+    AND speculative_retry = '99PERCENTILE';
+
+cqlsh>
+
+0(root@ipsawdvopskbg03 ~)$ docker exec -it my-dse nodetool nodesyncservice status
+The NodeSync service is running
+0(root@ipsawdvopskbg03 ~)$
+
+0(root@ipsawdvopskbg03 ~)$ docker ps | grep 'my-'
+6a4682266f96        datastax/dse-studio                                                "/entrypoint.sh"         35 minutes ago      Up 35 minutes       0.0.0.0:9091->9091/tcp                                                                                                                                            my-studio
+4391583b0c29        datastax/dse-server                                                "/entrypoint.sh dse …"   37 minutes ago      Up 37 minutes       4040/tcp, 5598-5599/tcp, 7000-7001/tcp, 7077/tcp, 7080-7081/tcp, 7199/tcp, 8090/tcp, 8182/tcp, 8609/tcp, 8983-8984/tcp, 9042/tcp, 9160/tcp, 9999/tcp, 18080/tcp   my-dse
+64cfd130d392        datastax/dse-opscenter                                             "/entrypoint.sh -f"      38 minutes ago      Up 38 minutes       50031/tcp, 0.0.0.0:8888->8888/tcp, 61620/tcp                                                                                                                      my-opscenter
+0(root@ipsawdvopskbg03 ~)$ hostname -I
+10.48.6.58 172.17.0.1 10.38.0.0
+
+http://10.48.6.58:8888/opscenter/index.html
+
+Use 172.17.0.4 as the dse server ip in opscenter
+
+$ docker exec -e COLUMNS="`tput cols`" -e LINES="`tput lines`" -ti my-dse bash
+dse@4391583b0c29:/etc$ ls /opt/dse/demos/spark-mllib/iris.csv
+/opt/dse/demos/spark-mllib/iris.csv
+dse@4391583b0c29:/etc$ cat /opt/dse/demos/spark-mllib/iris.csv | awk 'BEGIN{a=0} {printf("%d,%s\n", a++, $0);}' > /tmp/iris_with_id.csv
+dse@4391583b0c29:/etc$ head /opt/dse/demos/spark-mllib/iris.csv
+5.1,3.5,1.4,0.2,Iris-setosa
+4.9,3.0,1.4,0.2,Iris-setosa
+4.7,3.2,1.3,0.2,Iris-setosa
+4.6,3.1,1.5,0.2,Iris-setosa
+5.0,3.6,1.4,0.2,Iris-setosa
+5.4,3.9,1.7,0.4,Iris-setosa
+4.6,3.4,1.4,0.3,Iris-setosa
+5.0,3.4,1.5,0.2,Iris-setosa
+4.4,2.9,1.4,0.2,Iris-setosa
+4.9,3.1,1.5,0.1,Iris-setosa
+dse@4391583b0c29:/etc$ head /tmp/iris_with_id.csv
+0,5.1,3.5,1.4,0.2,Iris-setosa
+1,4.9,3.0,1.4,0.2,Iris-setosa
+2,4.7,3.2,1.3,0.2,Iris-setosa
+3,4.6,3.1,1.5,0.2,Iris-setosa
+4,5.0,3.6,1.4,0.2,Iris-setosa
+5,5.4,3.9,1.7,0.4,Iris-setosa
+6,4.6,3.4,1.4,0.3,Iris-setosa
+7,5.0,3.4,1.5,0.2,Iris-setosa
+8,4.4,2.9,1.4,0.2,Iris-setosa
+9,4.9,3.1,1.5,0.1,Iris-setosa
+dse@4391583b0c29:/etc$
+
+dse@4391583b0c29:/etc$ /opt/dse/bin/dsbulk load -h 172.17.0.4 -k testks -t iris -url /tmp/iris_with_id.csv -header false -m "0=id,1=sepal_l,2=sepal_w,3=petal_l,4=petal_w,5=species" -logDir /tmp
+2018-07-09 15:48:37 INFO  DataStax Bulk Loader v1.0.2 starting.
+2018-07-09 15:48:37 INFO  Available CPU cores: 16.
+2018-07-09 15:48:37 INFO  Operation output directory: /tmp/LOAD_20180709-154837-716616.
+2018-07-09 15:48:39 INFO  Load workflow engine execution LOAD_20180709-154837-716616 started.
+2018-07-09 15:48:39 INFO  Load workflow engine execution LOAD_20180709-154837-716616 completed successfully in 0 seconds.
+2018-07-09 15:48:39 INFO  Load workflow engine execution LOAD_20180709-154837-716616 closing.
+2018-07-09 15:48:42 INFO  Final stats:
+2018-07-09 15:48:42 INFO  Records: total: 150, successful: 150, failed: 0
+2018-07-09 15:48:42 INFO  Batches: total: 150, size: 1.00 mean, 1 min, 1 max
+2018-07-09 15:48:42 INFO  Memory usage: used: 151 MB, free: 567 MB, allocated: 719 MB, available: 14,279 MB, total gc count: 2, total gc time: 35 ms
+2018-07-09 15:48:42 INFO  Writes: total: 150, successful: 150, failed: 0, in-flight: 0
+2018-07-09 15:48:42 INFO  Throughput: 56 writes/second, 0.00 mb/second (0.05 kb/write)
+2018-07-09 15:48:42 INFO  Latencies: mean 4.89, 75p 5.60, 99p 23.46, 999p 26.87 milliseconds
+2018-07-09 15:48:42 INFO  Last processed positions can be found in positions.txt
+2018-07-09 15:48:42 INFO  Load workflow engine execution LOAD_20180709-154837-716616 closed.
+dse@4391583b0c29:/etc$
+dse@4391583b0c29:/etc$ cqlsh 172.17.0.4
+Connected to Test Cluster at 172.17.0.4:9042.
+[cqlsh 5.0.1 | DSE 6.0.1 | CQL spec 3.4.5 | DSE protocol v2]
+Use HELP for help.
+cqlsh> select * from  testks.iris limit 10;
+
+ id  | petal_l | petal_w | sepal_l | sepal_w | species
+-----+---------+---------+---------+---------+-----------------
+  23 |     1.7 |     0.5 |     5.1 |     3.3 |     Iris-setosa
+ 114 |     5.1 |     2.4 |     5.8 |     2.8 |  Iris-virginica
+  53 |       4 |     1.3 |     5.5 |     2.3 | Iris-versicolor
+ 110 |     5.1 |       2 |     6.5 |     3.2 |  Iris-virginica
+  91 |     4.6 |     1.4 |     6.1 |       3 | Iris-versicolor
+ 128 |     5.6 |     2.1 |     6.4 |     2.8 |  Iris-virginica
+ 117 |     6.7 |     2.2 |     7.7 |     3.8 |  Iris-virginica
+ 144 |     5.7 |     2.5 |     6.7 |     3.3 |  Iris-virginica
+ 120 |     5.7 |     2.3 |     6.9 |     3.2 |  Iris-virginica
+ 140 |     5.6 |     2.4 |     6.7 |     3.1 |  Iris-virginica
+ 
